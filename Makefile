@@ -15,8 +15,21 @@ dev: ## Install development dependencies
 run: ## Run the FastAPI server
 	poetry run uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 
-db-up: ## Start PostgreSQL container
+services-up: ## Start all services (PostgreSQL + Redis)
+	docker-compose up -d
+
+services-down: ## Stop all services
+	docker-compose down
+
+services-reset: ## Reset all services (stop, remove volumes, start)
+	docker-compose down -v
+	docker-compose up -d
+
+db-up: ## Start PostgreSQL container only
 	docker-compose up -d postgres
+
+redis-up: ## Start Redis container only
+	docker-compose up -d redis
 
 db-down: ## Stop PostgreSQL container
 	docker-compose down
@@ -24,6 +37,9 @@ db-down: ## Stop PostgreSQL container
 db-reset: ## Reset database (stop, remove volumes, start)
 	docker-compose down -v
 	docker-compose up -d postgres
+
+redis-test: ## Test Redis connection and operations
+	poetry run python test_redis.py
 
 test: ## Run tests
 	poetry run pytest

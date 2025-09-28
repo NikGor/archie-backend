@@ -3,7 +3,6 @@ name = "archie-backend"
 version = "0.1.0"
 description = "Minimalist backend service for chat messages and conversations"
 authors = ["niko"]
-readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -18,6 +17,7 @@ beautifulsoup4 = "^4.12.0"
 markdown = "^3.5.0"
 html2text = "^2025.4.15"
 strip-markdown = "^1.3"
+redis = "^5.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.3"
@@ -107,4 +107,4 @@ ignore = [
 "__init__.py" = ["F401"]
 
 [tool.ruff.isort]
-known-third-party = ["fastapi", "pydantic", "psycopg2"]
+known-third-party = ["fastapi", "pydantic", "psycopg2", "redis"]
