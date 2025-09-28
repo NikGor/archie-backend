@@ -104,3 +104,21 @@ class MessageResponse(BaseModel):
     message: str = Field(
         "Message created successfully", description="Success message"
     )
+
+
+class ChatHistoryMessage(BaseModel):
+    """Simplified message model for chat history"""
+    role: Literal["user", "assistant", "system"] = Field(
+        description="Role of the message sender"
+    )
+    text: str = Field(description="Content of the message (cleaned to plain text)")
+    metadata: Optional[dict] = Field(
+        None, description="Additional metadata for the message"
+    )
+
+
+class ChatHistoryResponse(BaseModel):
+    """Response model for chat history endpoint"""
+    messages: list[ChatHistoryMessage] = Field(
+        description="List of messages in the conversation"
+    )

@@ -9,9 +9,11 @@ from app.models import (
     ConversationResponse,
     MessageRequest,
     MessageResponse,
+    ChatHistoryResponse,
+    ChatHistoryMessage,
 )
 from app.backend import get_database
-from utils import generate_message_id, generate_conversation_id
+from utils import generate_message_id, generate_conversation_id, clean_text_to_plain
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -159,4 +161,46 @@ async def create_message(request: MessageRequest) -> MessageResponse:
         raise
     except Exception as e:
         logger.error(f"Error creating message: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
+
+
+@router.get("/chat_history", tags=["chat"],
+            summary="Get chat history",
+            description="Get conversation messages in simplified format with plain text")
+async def get_chat_history(
+    conversation_id: str = Query(description="ID of the conversation to retrieve")
+) -> ChatHistoryResponse:
+    """Get chat history with messages converted to plain text."""
+    try:
+        logger.info(f"Fetching chat history for conversation: {conversation_id}")
+        
+        # Get conversation with messages
+        conversation = db.get_conversation_with_messages(conversation_id)
+        if not conversation:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Conversation {conversation_id} not found"
+            )
+        
+        # Convert messages to simplified format with plain text
+        history_messages = []
+        if conversation.messages:
+            for message in conversation.messages:
+                # Clean text based on format
+                clean_text = clean_text_to_plain(message.text, message.text_format)
+                
+                history_message = ChatHistoryMessage(
+                    role=message.role,
+                    text=clean_text,
+                    metadata=message.metadata
+                )
+                history_messages.append(history_message)
+        
+        logger.info(f"Successfully retrieved {len(history_messages)} messages for conversation {conversation_id}")
+        return ChatHistoryResponse(messages=history_messages)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching chat history: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
