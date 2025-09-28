@@ -15,15 +15,27 @@ dev: ## Install development dependencies
 run: ## Run the FastAPI server
 	poetry run uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 
-services-up: ## Start all services (PostgreSQL + Redis)
+services-up: ## Start all services (Backend + PostgreSQL + Redis)
 	docker-compose up -d
+
+services-build: ## Build and start all services
+	docker-compose up --build -d
 
 services-down: ## Stop all services
 	docker-compose down
 
 services-reset: ## Reset all services (stop, remove volumes, start)
 	docker-compose down -v
-	docker-compose up -d
+	docker-compose up --build -d
+
+services-logs: ## Show logs from all services
+	docker-compose logs -f
+
+network-create: ## Create shared network
+	docker network create shared_network || true
+
+network-remove: ## Remove shared network
+	docker network rm shared_network || true
 
 db-up: ## Start PostgreSQL container only
 	docker-compose up -d postgres

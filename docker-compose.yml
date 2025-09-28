@@ -1,6 +1,31 @@
 version: '3.8'
 
 services:
+  backend:
+    build: .
+    container_name: archie-backend
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/archie_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+    networks:
+      - shared_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   postgres:
     image: postgres:15
     container_name: archie-postgres
@@ -12,6 +37,8 @@ services:
       - "8003:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - shared_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 30s
@@ -26,6 +53,8 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    networks:
+      - shared_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -35,3 +64,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  shared_network:
+    external: true
