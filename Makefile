@@ -1,4 +1,4 @@
-.PHONY: help install dev run db-up db-down db-reset test clean
+.PHONY: help install dev run db-up db-down db-reset test clean db-init db-revision db-upgrade db-downgrade db-history db-current db-stamp
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -46,3 +46,25 @@ fix: ## Fix auto-fixable issues with ruff
 check: ## Run both formatting and linting
 	poetry run black --check .
 	poetry run ruff check .
+
+# Database migration commands
+db-init: ## Initialize Alembic (already done)
+	poetry run alembic init alembic
+
+db-revision: ## Create a new migration revision
+	poetry run alembic revision --autogenerate -m "$(message)"
+
+db-upgrade: ## Apply all pending migrations
+	poetry run alembic upgrade head
+
+db-downgrade: ## Downgrade database by one revision
+	poetry run alembic downgrade -1
+
+db-history: ## Show migration history
+	poetry run alembic history
+
+db-current: ## Show current database revision
+	poetry run alembic current
+
+db-stamp: ## Mark database as being at a particular revision
+	poetry run alembic stamp head

@@ -1,320 +1,205 @@
-"""
-SQLite backend for storing chat messages and conversations.
-"""
-
 import json
 import logging
 import os
-import sqlite3
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from .models import ChatMessage, Conversation
+from database import Base, Conversation as SQLAConversation, Message as SQLAMessage
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 
 class ChatDatabase:
-    """SQLite database handler for chat messages and conversations."""
-
-    def __init__(self, db_path: str | None = None):
-        self.db_path = db_path or os.getenv("DATABASE_PATH", "data/chat.db")
-        assert self.db_path is not None, "Database path cannot be None"
-        # Ensure directory exists
-        db_dir = os.path.dirname(self.db_path)
-        if db_dir:
-            os.makedirs(db_dir, exist_ok=True)
+    def __init__(self, db_url: str | None = None):
+        self.db_url = db_url or os.getenv("DATABASE_URL", "sqlite:///data/chat.db")
+        self.engine = create_engine(self.db_url)
+        self.Session = sessionmaker(bind=self.engine)
         self._init_database()
 
     def _init_database(self) -> None:
-        """Initialize database with required tables."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS conversations (
-                    conversation_id TEXT PRIMARY KEY,
-                    created_at TEXT NOT NULL,
-                    llm_trace TEXT
-                )
-            """
-            )
-
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS messages (
-                    message_id TEXT PRIMARY KEY,
-                    conversation_id TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    text_format TEXT DEFAULT 'plain',
-                    text TEXT NOT NULL,
-                    metadata TEXT,
-                    created_at TEXT NOT NULL,
-                    llm_trace TEXT,
-                    FOREIGN KEY (conversation_id) REFERENCES conversations (conversation_id)
-                )
-            """
-            )
-
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_messages_conversation_id
-                ON messages (conversation_id)
-            """
-            )
-
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_messages_created_at
-                ON messages (created_at)
-            """
-            )
-
-            conn.commit()
-            logger.info(f"Database initialized: {self.db_path}")
+        Base.metadata.create_all(self.engine)
+        logger.info(f"Database initialized: {self.db_url}")
 
     def save_message(self, message: ChatMessage) -> None:
-        """Save a chat message to the database."""
-        with sqlite3.connect(self.db_path) as conn:
-            # Ensure conversation exists
+        with self.Session() as session:
             if message.conversation_id:
-                self._ensure_conversation_exists(conn, message.conversation_id)
+                self._ensure_conversation_exists(session, message.conversation_id)
 
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO messages
-                (message_id, conversation_id, role, text_format, text, metadata, created_at, llm_trace)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    message.message_id,
-                    message.conversation_id,
-                    message.role,
-                    message.text_format,
-                    message.text,
-                    json.dumps(message.metadata) if message.metadata else None,
-                    message.created_at.isoformat(),
-                    json.dumps(message.llm_trace.dict()) if message.llm_trace else None,
-                ),
-            )
-            conn.commit()
+            db_message = session.get(SQLAMessage, message.message_id)
+            if db_message:
+                db_message.conversation_id = message.conversation_id
+                db_message.role = message.role
+                db_message.text_format = message.text_format
+                db_message.text = message.text
+                db_message.message_metadata = json.dumps(message.metadata) if message.metadata else None
+                db_message.created_at = message.created_at
+                db_message.llm_trace = json.dumps(message.llm_trace.dict()) if message.llm_trace else None
+            else:
+                db_message = SQLAMessage(
+                    message_id=message.message_id,
+                    conversation_id=message.conversation_id,
+                    role=message.role,
+                    text_format=message.text_format,
+                    text=message.text,
+                    message_metadata=json.dumps(message.metadata) if message.metadata else None,
+                    created_at=message.created_at,
+                    llm_trace=json.dumps(message.llm_trace.dict()) if message.llm_trace else None,
+                )
+                session.add(db_message)
+            
+            session.commit()
             logger.debug(f"Saved message {message.message_id}")
 
     def save_conversation(self, conversation: Conversation) -> None:
-        """Save a conversation and all its messages."""
-        with sqlite3.connect(self.db_path) as conn:
-            # Save conversation
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO conversations
-                (conversation_id, created_at, llm_trace)
-                VALUES (?, ?, ?)
-            """,
-                (
-                    conversation.conversation_id,
-                    conversation.created_at.isoformat(),
-                    (
-                        json.dumps(conversation.llm_trace.dict())
-                        if conversation.llm_trace
-                        else None
-                    ),
-                ),
-            )
+        with self.Session() as session:
+            db_conversation = session.get(SQLAConversation, conversation.conversation_id)
+            if db_conversation:
+                db_conversation.created_at = conversation.created_at
+                db_conversation.llm_trace = json.dumps(conversation.llm_trace.dict()) if conversation.llm_trace else None
+            else:
+                db_conversation = SQLAConversation(
+                    conversation_id=conversation.conversation_id,
+                    created_at=conversation.created_at,
+                    llm_trace=json.dumps(conversation.llm_trace.dict()) if conversation.llm_trace else None,
+                )
+                session.add(db_conversation)
 
-            # Save all messages
             for message in conversation.messages:
                 message.conversation_id = conversation.conversation_id
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO messages
-                    (message_id, conversation_id, role, text_format, text, metadata, created_at, llm_trace)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        message.message_id,
-                        message.conversation_id,
-                        message.role,
-                        message.text_format,
-                        message.text,
-                        (
-                            json.dumps(message.metadata)
-                            if message.metadata
-                            else None
-                        ),
-                        message.created_at.isoformat(),
-                        (
-                            json.dumps(message.llm_trace.dict())
-                            if message.llm_trace
-                            else None
-                        ),
-                    ),
-                )
+                self.save_message(message)
 
-            conn.commit()
-            logger.debug(
-                f"Saved conversation {conversation.conversation_id} with {len(conversation.messages)} messages"
-            )
+            session.commit()
+            logger.debug(f"Saved conversation {conversation.conversation_id} with {len(conversation.messages)} messages")
 
     def get_conversation_history(
         self, conversation_id: str, order_desc: bool = False
     ) -> list[ChatMessage]:
-        """Load conversation history ordered by creation time."""
-        order_clause = (
-            "ORDER BY created_at DESC" if order_desc else "ORDER BY created_at ASC"
-        )
-
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                f"""
-                SELECT * FROM messages
-                WHERE conversation_id = ?
-                {order_clause}
-            """,
-                (conversation_id,),
-            )
-
+        with self.Session() as session:
+            query = session.query(SQLAMessage).filter(SQLAMessage.conversation_id == conversation_id)
+            
+            if order_desc:
+                query = query.order_by(SQLAMessage.created_at.desc())
+            else:
+                query = query.order_by(SQLAMessage.created_at.asc())
+            
+            db_messages = query.all()
+            
             messages = []
-            for row in cursor.fetchall():
-                message_dict = dict(row)
-
-                # Parse JSON fields
-                if message_dict["metadata"]:
-                    message_dict["metadata"] = json.loads(message_dict["metadata"])
-
-                if message_dict["llm_trace"]:
-                    message_dict["llm_trace"] = json.loads(message_dict["llm_trace"])
-
-                # Convert datetime string back to datetime object
-                message_dict["created_at"] = datetime.fromisoformat(
-                    message_dict["created_at"]
+            for db_msg in db_messages:
+                metadata = None
+                if db_msg.message_metadata:
+                    metadata = json.loads(db_msg.message_metadata)
+                
+                llm_trace = None
+                if db_msg.llm_trace:
+                    llm_trace = json.loads(db_msg.llm_trace)
+                
+                message = ChatMessage(
+                    message_id=db_msg.message_id,
+                    conversation_id=db_msg.conversation_id,
+                    role=db_msg.role,
+                    text_format=db_msg.text_format,
+                    text=db_msg.text,
+                    metadata=metadata,
+                    created_at=db_msg.created_at,
+                    llm_trace=llm_trace,
                 )
+                messages.append(message)
 
-                messages.append(ChatMessage(**message_dict))
-
-            logger.debug(
-                f"Loaded {len(messages)} messages for conversation {conversation_id}"
-            )
+            logger.debug(f"Loaded {len(messages)} messages for conversation {conversation_id}")
             return messages
 
     def get_conversation_history_for_agent(
         self, conversation_id: str
     ) -> list[dict[str, str]]:
         """Get conversation history in OpenAI API compatible format (chronological order)."""
-        messages = self.get_conversation_history(conversation_id, order_desc=False)
-        return [{"role": msg.role, "content": msg.text} for msg in messages]
+        with self.Session() as session:
+            messages = session.query(SQLAMessage).filter(
+                SQLAMessage.conversation_id == conversation_id
+            ).order_by(SQLAMessage.created_at.asc()).all()
+
+            return [{"role": msg.role, "content": msg.text} for msg in messages]
 
     def _ensure_conversation_exists(
-        self, conn: sqlite3.Connection, conversation_id: str
+        self, conversation_id: str
     ) -> None:
         """Ensure conversation record exists."""
-        cursor = conn.execute(
-            "SELECT 1 FROM conversations WHERE conversation_id = ?", (conversation_id,)
-        )
+        with self.Session() as session:
+            existing = session.query(SQLAConversation).filter(
+                SQLAConversation.conversation_id == conversation_id
+            ).first()
 
-        if not cursor.fetchone():
-            conn.execute(
-                """
-                INSERT INTO conversations (conversation_id, created_at)
-                VALUES (?, ?)
-            """,
-                (conversation_id, datetime.now(timezone.utc).isoformat()),
-            )
-            logger.debug(f"Created conversation {conversation_id}")
+            if not existing:
+                new_conversation = SQLAConversation(
+                    conversation_id=conversation_id,
+                    title="New Conversation",
+                    created_at=datetime.now(timezone.utc)
+                )
+                session.add(new_conversation)
+                session.commit()
+                logger.debug(f"Created conversation {conversation_id}")
 
     def list_conversations(self, limit: int = 50) -> list[str]:
         """List recent conversation IDs."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                """
-                SELECT conversation_id FROM conversations
-                ORDER BY created_at DESC
-                LIMIT ?
-            """,
-                (limit,),
-            )
+        with self.Session() as session:
+            conversations = session.query(SQLAConversation.conversation_id).order_by(
+                SQLAConversation.created_at.desc()
+            ).limit(limit).all()
 
-            return [row[0] for row in cursor.fetchall()]
+            return [conv.conversation_id for conv in conversations]
 
-    def get_all_conversations(self, limit: int = 50) -> list[Conversation]:
-        """Get all conversations with their basic info (without messages)."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                """
-                SELECT conversation_id, created_at, llm_trace
-                FROM conversations
-                ORDER BY created_at DESC
-                LIMIT ?
-            """,
-                (limit,),
-            )
+    def get_all_conversations(self) -> list[Conversation]:
+        """Get all conversations ordered by creation time (newest first)."""
+        with self.Session() as session:
+            db_conversations = session.query(SQLAConversation).order_by(
+                SQLAConversation.created_at.desc()
+            ).all()
 
             conversations = []
-            for row in cursor.fetchall():
-                conversation_dict = dict(row)
-
-                # Parse JSON fields
-                if conversation_dict["llm_trace"]:
-                    conversation_dict["llm_trace"] = json.loads(
-                        conversation_dict["llm_trace"]
-                    )
-
-                # Convert datetime string back to datetime object
-                conversation_dict["created_at"] = datetime.fromisoformat(
-                    conversation_dict["created_at"]
+            for db_conv in db_conversations:
+                conversation = Conversation(
+                    conversation_id=db_conv.conversation_id,
+                    title=db_conv.title,
+                    created_at=db_conv.created_at,
                 )
+                conversations.append(conversation)
 
-                # Create conversation without messages (empty list)
-                conversation_dict["messages"] = []
-
-                conversations.append(Conversation(**conversation_dict))
-
-            logger.debug(f"Loaded {len(conversations)} conversations")
+            logger.debug(f"Retrieved {len(conversations)} conversations")
             return conversations
 
     def get_conversation_with_messages(
         self, conversation_id: str
     ) -> Conversation | None:
         """Get a complete conversation with all its messages."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-
+        with self.Session() as session:
             # Get conversation info
-            cursor = conn.execute(
-                """
-                SELECT conversation_id, created_at, llm_trace
-                FROM conversations
-                WHERE conversation_id = ?
-            """,
-                (conversation_id,),
-            )
+            db_conversation = session.query(SQLAConversation).filter(
+                SQLAConversation.conversation_id == conversation_id
+            ).first()
 
-            conv_row = cursor.fetchone()
-            if not conv_row:
+            if not db_conversation:
                 return None
-
-            conversation_dict = dict(conv_row)
-
-            # Parse JSON fields
-            if conversation_dict["llm_trace"]:
-                conversation_dict["llm_trace"] = json.loads(
-                    conversation_dict["llm_trace"]
-                )
-
-            # Convert datetime string back to datetime object
-            conversation_dict["created_at"] = datetime.fromisoformat(
-                conversation_dict["created_at"]
-            )
 
             # Get messages for this conversation (sorted by newest first for API response)
             messages = self.get_conversation_history(conversation_id, order_desc=True)
-            conversation_dict["messages"] = messages
 
-            return Conversation(**conversation_dict)
+            conversation = Conversation(
+                conversation_id=db_conversation.conversation_id,
+                title=db_conversation.title,
+                created_at=db_conversation.created_at,
+                messages=messages
+            )
 
-    def create_conversation(self, conversation_id: str | None = None) -> Conversation:
+            return conversation
+
+    def create_conversation(
+        self, conversation_id: str | None = None, title: str = "New Conversation"
+    ) -> Conversation:
         """Create a new conversation."""
         import uuid
 
@@ -323,37 +208,51 @@ class ChatDatabase:
 
         created_at = datetime.now(timezone.utc)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self.Session() as session:
             try:
-                conn.execute(
-                    """
-                    INSERT INTO conversations (conversation_id, created_at)
-                    VALUES (?, ?)
-                """,
-                    (conversation_id, created_at.isoformat()),
+                # Check if conversation already exists
+                existing = session.query(SQLAConversation).filter(
+                    SQLAConversation.conversation_id == conversation_id
+                ).first()
+                
+                if existing:
+                    raise ValueError(f"Conversation with ID {conversation_id} already exists")
+
+                # Create new conversation
+                new_conversation = SQLAConversation(
+                    conversation_id=conversation_id,
+                    title=title,
+                    created_at=created_at
                 )
-                conn.commit()
+                session.add(new_conversation)
+                session.commit()
+                
                 logger.info(f"Created new conversation {conversation_id}")
 
                 return Conversation(
-                    conversation_id=conversation_id, messages=[], created_at=created_at
+                    conversation_id=conversation_id, 
+                    title=title,
+                    messages=[], 
+                    created_at=created_at
                 )
-            except sqlite3.IntegrityError:
-                raise ValueError(
-                    f"Conversation with ID {conversation_id} already exists"
-                )
+            except Exception as e:
+                session.rollback()
+                raise e
 
     def delete_conversation(self, conversation_id: str) -> None:
         """Delete a conversation and all its messages."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                "DELETE FROM messages WHERE conversation_id = ?", (conversation_id,)
-            )
-            conn.execute(
-                "DELETE FROM conversations WHERE conversation_id = ?",
-                (conversation_id,),
-            )
-            conn.commit()
+        with self.Session() as session:
+            # Delete messages first (due to foreign key constraint)
+            session.query(SQLAMessage).filter(
+                SQLAMessage.conversation_id == conversation_id
+            ).delete()
+            
+            # Delete conversation
+            session.query(SQLAConversation).filter(
+                SQLAConversation.conversation_id == conversation_id
+            ).delete()
+            
+            session.commit()
             logger.info(f"Deleted conversation {conversation_id}")
 
 
