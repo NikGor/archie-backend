@@ -9,6 +9,7 @@ Base = declarative_base()
 class Conversation(Base):
     __tablename__ = "conversations"
     conversation_id = Column(String, primary_key=True)
+    title = Column(String, nullable=False, default="New Conversation")
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     llm_trace = Column(Text, nullable=True)
     messages = relationship("Message", back_populates="conversation")

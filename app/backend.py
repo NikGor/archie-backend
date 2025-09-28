@@ -28,7 +28,7 @@ class ChatDatabase:
     def save_message(self, message: ChatMessage) -> None:
         with self.Session() as session:
             if message.conversation_id:
-                self._ensure_conversation_exists(session, message.conversation_id)
+                self._ensure_conversation_exists(message.conversation_id)
 
             db_message = session.get(SQLAMessage, message.message_id)
             if db_message:
@@ -60,21 +60,47 @@ class ChatDatabase:
             db_conversation = session.get(SQLAConversation, conversation.conversation_id)
             if db_conversation:
                 db_conversation.created_at = conversation.created_at
+                db_conversation.title = conversation.title
                 db_conversation.llm_trace = json.dumps(conversation.llm_trace.dict()) if conversation.llm_trace else None
             else:
                 db_conversation = SQLAConversation(
                     conversation_id=conversation.conversation_id,
+                    title=conversation.title,
                     created_at=conversation.created_at,
                     llm_trace=json.dumps(conversation.llm_trace.dict()) if conversation.llm_trace else None,
                 )
                 session.add(db_conversation)
 
-            for message in conversation.messages:
-                message.conversation_id = conversation.conversation_id
-                self.save_message(message)
+            # Save messages within the same session
+            if conversation.messages:
+                for message in conversation.messages:
+                    message.conversation_id = conversation.conversation_id
+                    
+                    db_message = session.get(SQLAMessage, message.message_id)
+                    if db_message:
+                        db_message.conversation_id = message.conversation_id
+                        db_message.role = message.role
+                        db_message.text_format = message.text_format
+                        db_message.text = message.text
+                        db_message.message_metadata = json.dumps(message.metadata) if message.metadata else None
+                        db_message.created_at = message.created_at
+                        db_message.llm_trace = json.dumps(message.llm_trace.dict()) if message.llm_trace else None
+                    else:
+                        db_message = SQLAMessage(
+                            message_id=message.message_id,
+                            conversation_id=message.conversation_id,
+                            role=message.role,
+                            text_format=message.text_format,
+                            text=message.text,
+                            message_metadata=json.dumps(message.metadata) if message.metadata else None,
+                            created_at=message.created_at,
+                            llm_trace=json.dumps(message.llm_trace.dict()) if message.llm_trace else None,
+                        )
+                        session.add(db_message)
 
             session.commit()
-            logger.debug(f"Saved conversation {conversation.conversation_id} with {len(conversation.messages)} messages")
+            message_count = len(conversation.messages) if conversation.messages else 0
+            logger.debug(f"Saved conversation {conversation.conversation_id} with {message_count} messages")
 
     def get_conversation_history(
         self, conversation_id: str, order_desc: bool = False
@@ -153,12 +179,12 @@ class ChatDatabase:
 
             return [conv.conversation_id for conv in conversations]
 
-    def get_all_conversations(self) -> list[Conversation]:
+    def get_all_conversations(self, limit: int = 50) -> list[Conversation]:
         """Get all conversations ordered by creation time (newest first)."""
         with self.Session() as session:
             db_conversations = session.query(SQLAConversation).order_by(
                 SQLAConversation.created_at.desc()
-            ).all()
+            ).limit(limit).all()
 
             conversations = []
             for db_conv in db_conversations:
@@ -166,6 +192,7 @@ class ChatDatabase:
                     conversation_id=db_conv.conversation_id,
                     title=db_conv.title,
                     created_at=db_conv.created_at,
+                    messages=[]
                 )
                 conversations.append(conversation)
 

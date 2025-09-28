@@ -42,8 +42,9 @@ class ChatMessage(BaseModel):
 class Conversation(BaseModel):
     """Conversation model containing multiple messages"""
     conversation_id: str = Field(description="Unique identifier for the conversation")
-    messages: list[ChatMessage] = Field(
-        description="List of messages in the conversation"
+    title: str = Field(default="New Conversation", description="Title of the conversation")
+    messages: Optional[list[ChatMessage]] = Field(
+        default=None, description="List of messages in the conversation"
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -60,11 +61,16 @@ class ConversationRequest(BaseModel):
         None,
         description="Optional custom conversation ID. If not provided, will be auto-generated",
     )
+    title: Optional[str] = Field(
+        "New Conversation",
+        description="Title of the conversation"
+    )
 
 
 class ConversationResponse(BaseModel):
     """Response model for conversation creation"""
     conversation_id: str = Field(description="ID of the created conversation")
+    title: str = Field(description="Title of the conversation")
     created_at: datetime = Field(
         description="Timestamp when the conversation was created"
     )

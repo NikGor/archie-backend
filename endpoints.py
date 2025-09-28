@@ -47,11 +47,12 @@ async def create_conversation(
         logger.info(
             f"Creating new conversation with ID: {request.conversation_id or 'auto-generated'}"
         )
-        conversation = db.create_conversation(request.conversation_id)
+        conversation = db.create_conversation(request.conversation_id, request.title or "New Conversation")
         logger.info(f"Successfully created conversation {conversation.conversation_id}")
 
         return ConversationResponse(
             conversation_id=conversation.conversation_id,
+            title=conversation.title,
             created_at=conversation.created_at,
         )
     except ValueError as e:
