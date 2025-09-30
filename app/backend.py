@@ -25,10 +25,10 @@ class ChatDatabase:
         Base.metadata.create_all(self.engine)
         logger.info(f"backend_001: Database initialized: \033[36m{self.db_url}\033[0m")
 
-    def save_message(self, message: ChatMessage) -> None:
+    async def save_message(self, message: ChatMessage) -> None:
         with self.Session() as session:
             if message.conversation_id:
-                self._ensure_conversation_exists(message.conversation_id)
+                await self._ensure_conversation_exists(message.conversation_id)
 
             db_message = session.get(SQLAMessage, message.message_id)
             if db_message:
@@ -54,7 +54,7 @@ class ChatDatabase:
             
             session.commit()
 
-    def save_conversation(self, conversation: Conversation) -> None:
+    async def save_conversation(self, conversation: Conversation) -> None:
         with self.Session() as session:
             db_conversation = session.get(SQLAConversation, conversation.conversation_id)
             if db_conversation:
@@ -99,7 +99,7 @@ class ChatDatabase:
 
             session.commit()
 
-    def get_conversation_history(
+    async def get_conversation_history(
         self, conversation_id: str, order_desc: bool = False
     ) -> list[ChatMessage]:
         with self.Session() as session:
@@ -136,7 +136,7 @@ class ChatDatabase:
 
             return messages
 
-    def get_conversation_history_for_agent(
+    async def get_conversation_history_for_agent(
         self, conversation_id: str
     ) -> list[dict[str, str]]:
         """Get conversation history in OpenAI API compatible format (chronological order)."""
@@ -147,7 +147,7 @@ class ChatDatabase:
 
             return [{"role": msg.role, "content": msg.text} for msg in messages]
 
-    def _ensure_conversation_exists(
+    async def _ensure_conversation_exists(
         self, conversation_id: str
     ) -> None:
         """Ensure conversation record exists."""
@@ -166,7 +166,7 @@ class ChatDatabase:
                 session.commit()
                 logger.info(f"backend_002: Auto-created conv: \033[32m{conversation_id}\033[0m")
 
-    def list_conversations(self, limit: int = 50) -> list[str]:
+    async def list_conversations(self, limit: int = 50) -> list[str]:
         """List recent conversation IDs."""
         with self.Session() as session:
             conversations = session.query(SQLAConversation.conversation_id).order_by(
@@ -175,7 +175,7 @@ class ChatDatabase:
 
             return [conv.conversation_id for conv in conversations]
 
-    def get_all_conversations(self, limit: int = 50) -> list[Conversation]:
+    async def get_all_conversations(self, limit: int = 50) -> list[Conversation]:
         """Get all conversations ordered by creation time (newest first)."""
         with self.Session() as session:
             db_conversations = session.query(SQLAConversation).order_by(
@@ -194,7 +194,7 @@ class ChatDatabase:
 
             return conversations
 
-    def get_conversation_with_messages(
+    async def get_conversation_with_messages(
         self, conversation_id: str
     ) -> Conversation | None:
         """Get a complete conversation with all its messages."""
@@ -208,7 +208,7 @@ class ChatDatabase:
                 return None
 
             # Get messages for this conversation (sorted by newest first for API response)
-            messages = self.get_conversation_history(conversation_id, order_desc=True)
+            messages = await self.get_conversation_history(conversation_id, order_desc=True)
 
             conversation = Conversation(
                 conversation_id=db_conversation.conversation_id,
@@ -219,7 +219,7 @@ class ChatDatabase:
 
             return conversation
 
-    def create_conversation(
+    async def create_conversation(
         self, conversation_id: str | None = None, title: str = "New Conversation"
     ) -> Conversation:
         """Create a new conversation."""
@@ -261,7 +261,7 @@ class ChatDatabase:
                 session.rollback()
                 raise e
 
-    def delete_conversation(self, conversation_id: str) -> None:
+    async def delete_conversation(self, conversation_id: str) -> None:
         """Delete a conversation and all its messages."""
         with self.Session() as session:
             # Delete messages first (due to foreign key constraint)

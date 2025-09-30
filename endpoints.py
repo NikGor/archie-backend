@@ -31,7 +31,7 @@ async def get_conversations(
 ) -> list[Conversation]:
     """Get all conversations."""
     try:
-        conversations = db.get_all_conversations(limit=limit)
+        conversations = await db.get_all_conversations(limit=limit)
         logger.info(f"endpoints_001: Retrieved \033[33m{len(conversations)}\033[0m conversations")
         return conversations
     except Exception as e:
@@ -47,7 +47,7 @@ async def create_conversation(
 ) -> ConversationResponse:
     """Create a new conversation."""
     try:
-        conversation = db.create_conversation(request.conversation_id, request.title or "New Conversation")
+        conversation = await db.create_conversation(request.conversation_id, request.title or "New Conversation")
         logger.info(f"endpoints_002: Created conv: \033[32m{conversation.conversation_id}\033[0m")
 
         return ConversationResponse(
@@ -69,7 +69,7 @@ async def create_conversation(
 async def get_conversation(conversation_id: str) -> Conversation:
     """Get conversation metadata (without messages)."""
     try:
-        conversation = db.get_conversation_with_messages(conversation_id)
+        conversation = await db.get_conversation_with_messages(conversation_id)
         if not conversation:
             logger.info(f"endpoints_003: Conv not found: \033[36m{conversation_id}\033[0m")
             raise HTTPException(
@@ -95,7 +95,7 @@ async def get_messages(
     """Get messages, optionally filtered by conversation_id."""
     try:
         if conversation_id:
-            messages = db.get_conversation_history(conversation_id, order_desc=False)
+            messages = await db.get_conversation_history(conversation_id, order_desc=False)
             logger.info(f"endpoints_004: Retrieved \033[33m{len(messages)}\033[0m msgs for conv: \033[36m{conversation_id}\033[0m")
             return messages[:limit]
         else:
@@ -120,11 +120,11 @@ async def create_message(request: MessageRequest) -> MessageResponse:
         # If no conversation_id provided, create a new conversation
         if not conversation_id:
             conversation_id = generate_conversation_id()
-            new_conversation = db.create_conversation(conversation_id)
+            new_conversation = await db.create_conversation(conversation_id)
             logger.info(f"endpoints_005: Created new conv: \033[32m{conversation_id}\033[0m")
         else:
             # Check if conversation exists
-            conversation = db.get_conversation_with_messages(conversation_id)
+            conversation = await db.get_conversation_with_messages(conversation_id)
             if not conversation:
                 logger.info(f"endpoints_006: Conv not found: \033[36m{conversation_id}\033[0m")
                 raise HTTPException(
@@ -143,7 +143,7 @@ async def create_message(request: MessageRequest) -> MessageResponse:
         )
         
         # Save message to database
-        db.save_message(message)
+        await db.save_message(message)
         logger.info(f"endpoints_007: Created msg: \033[36m{message.message_id}\033[0m, Role: \033[35m{request.role}\033[0m")
 
         return MessageResponse(
@@ -167,7 +167,7 @@ async def get_chat_history(
     """Get chat history with messages converted to plain text in YAML format."""
     try:
         # Get conversation with messages
-        conversation = db.get_conversation_with_messages(conversation_id)
+        conversation = await db.get_conversation_with_messages(conversation_id)
         if not conversation:
             logger.info(f"endpoints_008: Conv not found for history: \033[36m{conversation_id}\033[0m")
             raise HTTPException(
