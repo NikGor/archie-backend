@@ -23,7 +23,7 @@ class ChatDatabase:
 
     def _init_database(self) -> None:
         Base.metadata.create_all(self.engine)
-        logger.info(f"Database initialized: {self.db_url}")
+        logger.info(f"backend_001: Database initialized: \033[36m{self.db_url}\033[0m")
 
     def save_message(self, message: ChatMessage) -> None:
         with self.Session() as session:
@@ -53,7 +53,6 @@ class ChatDatabase:
                 session.add(db_message)
             
             session.commit()
-            logger.debug(f"Saved message {message.message_id}")
 
     def save_conversation(self, conversation: Conversation) -> None:
         with self.Session() as session:
@@ -99,8 +98,6 @@ class ChatDatabase:
                         session.add(db_message)
 
             session.commit()
-            message_count = len(conversation.messages) if conversation.messages else 0
-            logger.debug(f"Saved conversation {conversation.conversation_id} with {message_count} messages")
 
     def get_conversation_history(
         self, conversation_id: str, order_desc: bool = False
@@ -137,7 +134,6 @@ class ChatDatabase:
                 )
                 messages.append(message)
 
-            logger.debug(f"Loaded {len(messages)} messages for conversation {conversation_id}")
             return messages
 
     def get_conversation_history_for_agent(
@@ -168,7 +164,7 @@ class ChatDatabase:
                 )
                 session.add(new_conversation)
                 session.commit()
-                logger.debug(f"Created conversation {conversation_id}")
+                logger.info(f"backend_002: Auto-created conv: \033[32m{conversation_id}\033[0m")
 
     def list_conversations(self, limit: int = 50) -> list[str]:
         """List recent conversation IDs."""
@@ -196,7 +192,6 @@ class ChatDatabase:
                 )
                 conversations.append(conversation)
 
-            logger.debug(f"Retrieved {len(conversations)} conversations")
             return conversations
 
     def get_conversation_with_messages(
@@ -254,7 +249,7 @@ class ChatDatabase:
                 session.add(new_conversation)
                 session.commit()
                 
-                logger.info(f"Created new conversation {conversation_id}")
+                logger.info(f"backend_003: Created new conv: \033[32m{conversation_id}\033[0m")
 
                 return Conversation(
                     conversation_id=conversation_id, 
@@ -280,7 +275,7 @@ class ChatDatabase:
             ).delete()
             
             session.commit()
-            logger.info(f"Deleted conversation {conversation_id}")
+            logger.info(f"backend_004: Deleted conv: \033[31m{conversation_id}\033[0m")
 
 
 # Global database instance

@@ -1,6 +1,8 @@
 import logging
+import yaml
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 
 from app.models import (
     ChatMessage,
@@ -29,12 +31,11 @@ async def get_conversations(
 ) -> list[Conversation]:
     """Get all conversations."""
     try:
-        logger.info(f"Fetching conversations with limit: {limit}")
         conversations = db.get_all_conversations(limit=limit)
-        logger.info(f"Successfully retrieved {len(conversations)} conversations")
+        logger.info(f"endpoints_001: Retrieved \033[33m{len(conversations)}\033[0m conversations")
         return conversations
     except Exception as e:
-        logger.error(f"Error fetching conversations: {e}", exc_info=True)
+        logger.error(f"endpoints_error_001: \033[31m{str(e)}\033[0m")
         raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
 
 
@@ -46,11 +47,8 @@ async def create_conversation(
 ) -> ConversationResponse:
     """Create a new conversation."""
     try:
-        logger.info(
-            f"Creating new conversation with ID: {request.conversation_id or 'auto-generated'}"
-        )
         conversation = db.create_conversation(request.conversation_id, request.title or "New Conversation")
-        logger.info(f"Successfully created conversation {conversation.conversation_id}")
+        logger.info(f"endpoints_002: Created conv: \033[32m{conversation.conversation_id}\033[0m")
 
         return ConversationResponse(
             conversation_id=conversation.conversation_id,
@@ -58,10 +56,10 @@ async def create_conversation(
             created_at=conversation.created_at,
         )
     except ValueError as e:
-        logger.warning(f"Validation error creating conversation: {e}")
+        logger.warning(f"endpoints_warn_001: Validation error: \033[31m{str(e)}\033[0m")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error creating conversation: {e}", exc_info=True)
+        logger.error(f"endpoints_error_002: \033[31m{str(e)}\033[0m")
         raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
 
 
@@ -71,22 +69,19 @@ async def create_conversation(
 async def get_conversation(conversation_id: str) -> Conversation:
     """Get conversation metadata (without messages)."""
     try:
-        logger.info(f"Fetching conversation metadata: {conversation_id}")
         conversation = db.get_conversation_with_messages(conversation_id)
         if not conversation:
+            logger.info(f"endpoints_003: Conv not found: \033[36m{conversation_id}\033[0m")
             raise HTTPException(
                 status_code=404, detail=f"Conversation {conversation_id} not found"
             )
         # Return conversation without messages
         conversation.messages = []
-        logger.info(f"Successfully retrieved conversation metadata: {conversation_id}")
         return conversation
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Error fetching conversation {conversation_id}: {e}", exc_info=True
-        )
+        logger.error(f"endpoints_error_003: \033[31m{str(e)}\033[0m")
         raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
 
 
@@ -100,18 +95,16 @@ async def get_messages(
     """Get messages, optionally filtered by conversation_id."""
     try:
         if conversation_id:
-            logger.info(f"Fetching messages for conversation: {conversation_id}")
             messages = db.get_conversation_history(conversation_id, order_desc=False)
-            logger.info(f"Successfully retrieved {len(messages)} messages for conversation {conversation_id}")
+            logger.info(f"endpoints_004: Retrieved \033[33m{len(messages)}\033[0m msgs for conv: \033[36m{conversation_id}\033[0m")
             return messages[:limit]
         else:
-            logger.info("Fetching all messages")
             # TODO: Implement get_all_messages method in database
             # For now, return empty list
-            logger.warning("Getting all messages not implemented yet")
+            logger.warning("endpoints_warn_002: Getting all messages not implemented yet")
             return []
     except Exception as e:
-        logger.error(f"Error fetching messages: {e}", exc_info=True)
+        logger.error(f"endpoints_error_004: \033[31m{str(e)}\033[0m")
         raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
 
 
@@ -121,22 +114,23 @@ async def get_messages(
 async def create_message(request: MessageRequest) -> MessageResponse:
     """Create a new message in a conversation. If conversation_id is not provided, creates a new conversation."""
     try:
+        logger.info("=== STEP 2: Message Processing ===")
         conversation_id = request.conversation_id
         
         # If no conversation_id provided, create a new conversation
         if not conversation_id:
             conversation_id = generate_conversation_id()
             new_conversation = db.create_conversation(conversation_id)
-            logger.info(f"Created new conversation: {conversation_id}")
+            logger.info(f"endpoints_005: Created new conv: \033[32m{conversation_id}\033[0m")
         else:
             # Check if conversation exists
             conversation = db.get_conversation_with_messages(conversation_id)
             if not conversation:
+                logger.info(f"endpoints_006: Conv not found: \033[36m{conversation_id}\033[0m")
                 raise HTTPException(
                     status_code=404, 
                     detail=f"Conversation {conversation_id} not found"
                 )
-            logger.info(f"Using existing conversation: {conversation_id}")
         
         # Create message
         message = ChatMessage(
@@ -150,7 +144,7 @@ async def create_message(request: MessageRequest) -> MessageResponse:
         
         # Save message to database
         db.save_message(message)
-        logger.info(f"Successfully created message {message.message_id}")
+        logger.info(f"endpoints_007: Created msg: \033[36m{message.message_id}\033[0m, Role: \033[35m{request.role}\033[0m")
 
         return MessageResponse(
             message_id=message.message_id,
@@ -160,23 +154,22 @@ async def create_message(request: MessageRequest) -> MessageResponse:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error creating message: {e}", exc_info=True)
+        logger.error(f"endpoints_error_005: \033[31m{str(e)}\033[0m")
         raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
 
 
 @router.get("/chat_history", tags=["chat"],
             summary="Get chat history",
-            description="Get conversation messages in simplified format with plain text")
+            description="Get conversation messages in YAML format with plain text")
 async def get_chat_history(
     conversation_id: str = Query(description="ID of the conversation to retrieve")
-) -> ChatHistoryResponse:
-    """Get chat history with messages converted to plain text."""
+) -> Response:
+    """Get chat history with messages converted to plain text in YAML format."""
     try:
-        logger.info(f"Fetching chat history for conversation: {conversation_id}")
-        
         # Get conversation with messages
         conversation = db.get_conversation_with_messages(conversation_id)
         if not conversation:
+            logger.info(f"endpoints_008: Conv not found for history: \033[36m{conversation_id}\033[0m")
             raise HTTPException(
                 status_code=404, 
                 detail=f"Conversation {conversation_id} not found"
@@ -189,18 +182,31 @@ async def get_chat_history(
                 # Clean text based on format
                 clean_text = clean_text_to_plain(message.text, message.text_format)
                 
-                history_message = ChatHistoryMessage(
-                    role=message.role,
-                    text=clean_text,
-                    metadata=message.metadata
-                )
-                history_messages.append(history_message)
+                message_dict = {
+                    "role": message.role,
+                    "text": clean_text
+                }
+                
+                # Only include metadata if it exists
+                if message.metadata:
+                    message_dict["metadata"] = message.metadata
+                    
+                history_messages.append(message_dict)
         
-        logger.info(f"Successfully retrieved {len(history_messages)} messages for conversation {conversation_id}")
-        return ChatHistoryResponse(messages=history_messages)
+        # Create YAML response
+        yaml_data = {"messages": history_messages}
+        yaml_content = yaml.dump(yaml_data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        
+        logger.info(f"endpoints_009: Chat history exported: \033[33m{len(history_messages)}\033[0m msgs")
+        
+        return Response(
+            content=yaml_content,
+            media_type="text/yaml",
+            headers={"Content-Disposition": f"inline; filename=chat_history_{conversation_id}.yaml"}
+        )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching chat history: {e}", exc_info=True)
+        logger.error(f"endpoints_error_006: \033[31m{str(e)}\033[0m")
         raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
