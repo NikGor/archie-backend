@@ -7,8 +7,11 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from database import Base
+from database import Conversation as SQLAConversation
+from database import Message as SQLAMessage
+
 from .models import ChatMessage, Conversation
-from database import Base, Conversation as SQLAConversation, Message as SQLAMessage
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -25,6 +28,60 @@ class ChatDatabase:
         Base.metadata.create_all(self.engine)
         logger.info(f"backend_001: Database initialized: \033[36m{self.db_url}\033[0m")
 
+    def _create_db_message_from_chat_message(self, message: ChatMessage) -> SQLAMessage:
+        """Create SQLAlchemy Message from ChatMessage."""
+        return SQLAMessage(
+            message_id=message.message_id,
+            conversation_id=message.conversation_id,
+            role=message.role,
+            text_format=message.text_format,
+            text=message.text,
+            message_metadata=json.dumps(message.metadata) if message.metadata else None,
+            created_at=message.created_at,
+            llm_trace=json.dumps(message.llm_trace.dict())
+            if message.llm_trace
+            else None,
+        )
+
+    def _update_db_message_from_chat_message(
+        self, db_message: SQLAMessage, message: ChatMessage
+    ) -> None:
+        """Update SQLAlchemy Message from ChatMessage."""
+        db_message.conversation_id = message.conversation_id
+        db_message.role = message.role
+        db_message.text_format = message.text_format
+        db_message.text = message.text
+        db_message.message_metadata = (
+            json.dumps(message.metadata) if message.metadata else None
+        )
+        db_message.created_at = message.created_at
+        db_message.llm_trace = (
+            json.dumps(message.llm_trace.dict()) if message.llm_trace else None
+        )
+
+    def _create_chat_message_from_db_message(
+        self, db_message: SQLAMessage
+    ) -> ChatMessage:
+        """Create ChatMessage from SQLAlchemy Message."""
+        metadata = None
+        if db_message.message_metadata:
+            metadata = json.loads(db_message.message_metadata)
+
+        llm_trace = None
+        if db_message.llm_trace:
+            llm_trace = json.loads(db_message.llm_trace)
+
+        return ChatMessage(
+            message_id=db_message.message_id,
+            conversation_id=db_message.conversation_id,
+            role=db_message.role,
+            text_format=db_message.text_format,
+            text=db_message.text,
+            metadata=metadata,
+            created_at=db_message.created_at,
+            llm_trace=llm_trace,
+        )
+
     async def save_message(self, message: ChatMessage) -> None:
         with self.Session() as session:
             if message.conversation_id:
@@ -32,41 +89,34 @@ class ChatDatabase:
 
             db_message = session.get(SQLAMessage, message.message_id)
             if db_message:
-                db_message.conversation_id = message.conversation_id
-                db_message.role = message.role
-                db_message.text_format = message.text_format
-                db_message.text = message.text
-                db_message.message_metadata = json.dumps(message.metadata) if message.metadata else None
-                db_message.created_at = message.created_at
-                db_message.llm_trace = json.dumps(message.llm_trace.dict()) if message.llm_trace else None
+                self._update_db_message_from_chat_message(db_message, message)
             else:
-                db_message = SQLAMessage(
-                    message_id=message.message_id,
-                    conversation_id=message.conversation_id,
-                    role=message.role,
-                    text_format=message.text_format,
-                    text=message.text,
-                    message_metadata=json.dumps(message.metadata) if message.metadata else None,
-                    created_at=message.created_at,
-                    llm_trace=json.dumps(message.llm_trace.dict()) if message.llm_trace else None,
-                )
+                db_message = self._create_db_message_from_chat_message(message)
                 session.add(db_message)
-            
+
             session.commit()
 
     async def save_conversation(self, conversation: Conversation) -> None:
         with self.Session() as session:
-            db_conversation = session.get(SQLAConversation, conversation.conversation_id)
+            db_conversation = session.get(
+                SQLAConversation, conversation.conversation_id
+            )
             if db_conversation:
                 db_conversation.created_at = conversation.created_at
                 db_conversation.title = conversation.title
-                db_conversation.llm_trace = json.dumps(conversation.llm_trace.dict()) if conversation.llm_trace else None
+                db_conversation.llm_trace = (
+                    json.dumps(conversation.llm_trace.dict())
+                    if conversation.llm_trace
+                    else None
+                )
             else:
                 db_conversation = SQLAConversation(
                     conversation_id=conversation.conversation_id,
                     title=conversation.title,
                     created_at=conversation.created_at,
-                    llm_trace=json.dumps(conversation.llm_trace.dict()) if conversation.llm_trace else None,
+                    llm_trace=json.dumps(conversation.llm_trace.dict())
+                    if conversation.llm_trace
+                    else None,
                 )
                 session.add(db_conversation)
 
@@ -74,27 +124,12 @@ class ChatDatabase:
             if conversation.messages:
                 for message in conversation.messages:
                     message.conversation_id = conversation.conversation_id
-                    
+
                     db_message = session.get(SQLAMessage, message.message_id)
                     if db_message:
-                        db_message.conversation_id = message.conversation_id
-                        db_message.role = message.role
-                        db_message.text_format = message.text_format
-                        db_message.text = message.text
-                        db_message.message_metadata = json.dumps(message.metadata) if message.metadata else None
-                        db_message.created_at = message.created_at
-                        db_message.llm_trace = json.dumps(message.llm_trace.dict()) if message.llm_trace else None
+                        self._update_db_message_from_chat_message(db_message, message)
                     else:
-                        db_message = SQLAMessage(
-                            message_id=message.message_id,
-                            conversation_id=message.conversation_id,
-                            role=message.role,
-                            text_format=message.text_format,
-                            text=message.text,
-                            message_metadata=json.dumps(message.metadata) if message.metadata else None,
-                            created_at=message.created_at,
-                            llm_trace=json.dumps(message.llm_trace.dict()) if message.llm_trace else None,
-                        )
+                        db_message = self._create_db_message_from_chat_message(message)
                         session.add(db_message)
 
             session.commit()
@@ -103,36 +138,21 @@ class ChatDatabase:
         self, conversation_id: str, order_desc: bool = False
     ) -> list[ChatMessage]:
         with self.Session() as session:
-            query = session.query(SQLAMessage).filter(SQLAMessage.conversation_id == conversation_id)
-            
+            query = session.query(SQLAMessage).filter(
+                SQLAMessage.conversation_id == conversation_id
+            )
+
             if order_desc:
                 query = query.order_by(SQLAMessage.created_at.desc())
             else:
                 query = query.order_by(SQLAMessage.created_at.asc())
-            
+
             db_messages = query.all()
-            
-            messages = []
-            for db_msg in db_messages:
-                metadata = None
-                if db_msg.message_metadata:
-                    metadata = json.loads(db_msg.message_metadata)
-                
-                llm_trace = None
-                if db_msg.llm_trace:
-                    llm_trace = json.loads(db_msg.llm_trace)
-                
-                message = ChatMessage(
-                    message_id=db_msg.message_id,
-                    conversation_id=db_msg.conversation_id,
-                    role=db_msg.role,
-                    text_format=db_msg.text_format,
-                    text=db_msg.text,
-                    metadata=metadata,
-                    created_at=db_msg.created_at,
-                    llm_trace=llm_trace,
-                )
-                messages.append(message)
+
+            messages = [
+                self._create_chat_message_from_db_message(db_msg)
+                for db_msg in db_messages
+            ]
 
             return messages
 
@@ -141,46 +161,57 @@ class ChatDatabase:
     ) -> list[dict[str, str]]:
         """Get conversation history in OpenAI API compatible format (chronological order)."""
         with self.Session() as session:
-            messages = session.query(SQLAMessage).filter(
-                SQLAMessage.conversation_id == conversation_id
-            ).order_by(SQLAMessage.created_at.asc()).all()
+            messages = (
+                session.query(SQLAMessage)
+                .filter(SQLAMessage.conversation_id == conversation_id)
+                .order_by(SQLAMessage.created_at.asc())
+                .all()
+            )
 
             return [{"role": msg.role, "content": msg.text} for msg in messages]
 
-    async def _ensure_conversation_exists(
-        self, conversation_id: str
-    ) -> None:
+    async def _ensure_conversation_exists(self, conversation_id: str) -> None:
         """Ensure conversation record exists."""
         with self.Session() as session:
-            existing = session.query(SQLAConversation).filter(
-                SQLAConversation.conversation_id == conversation_id
-            ).first()
+            existing = (
+                session.query(SQLAConversation)
+                .filter(SQLAConversation.conversation_id == conversation_id)
+                .first()
+            )
 
             if not existing:
                 new_conversation = SQLAConversation(
                     conversation_id=conversation_id,
                     title="New Conversation",
-                    created_at=datetime.now(timezone.utc)
+                    created_at=datetime.now(timezone.utc),
                 )
                 session.add(new_conversation)
                 session.commit()
-                logger.info(f"backend_002: Auto-created conv: \033[32m{conversation_id}\033[0m")
+                logger.info(
+                    f"backend_002: Auto-created conv: \033[32m{conversation_id}\033[0m"
+                )
 
     async def list_conversations(self, limit: int = 50) -> list[str]:
         """List recent conversation IDs."""
         with self.Session() as session:
-            conversations = session.query(SQLAConversation.conversation_id).order_by(
-                SQLAConversation.created_at.desc()
-            ).limit(limit).all()
+            conversations = (
+                session.query(SQLAConversation.conversation_id)
+                .order_by(SQLAConversation.created_at.desc())
+                .limit(limit)
+                .all()
+            )
 
             return [conv.conversation_id for conv in conversations]
 
     async def get_all_conversations(self, limit: int = 50) -> list[Conversation]:
         """Get all conversations ordered by creation time (newest first)."""
         with self.Session() as session:
-            db_conversations = session.query(SQLAConversation).order_by(
-                SQLAConversation.created_at.desc()
-            ).limit(limit).all()
+            db_conversations = (
+                session.query(SQLAConversation)
+                .order_by(SQLAConversation.created_at.desc())
+                .limit(limit)
+                .all()
+            )
 
             conversations = []
             for db_conv in db_conversations:
@@ -188,7 +219,7 @@ class ChatDatabase:
                     conversation_id=db_conv.conversation_id,
                     title=db_conv.title,
                     created_at=db_conv.created_at,
-                    messages=[]
+                    messages=[],
                 )
                 conversations.append(conversation)
 
@@ -200,21 +231,25 @@ class ChatDatabase:
         """Get a complete conversation with all its messages."""
         with self.Session() as session:
             # Get conversation info
-            db_conversation = session.query(SQLAConversation).filter(
-                SQLAConversation.conversation_id == conversation_id
-            ).first()
+            db_conversation = (
+                session.query(SQLAConversation)
+                .filter(SQLAConversation.conversation_id == conversation_id)
+                .first()
+            )
 
             if not db_conversation:
                 return None
 
             # Get messages for this conversation (sorted by newest first for API response)
-            messages = await self.get_conversation_history(conversation_id, order_desc=True)
+            messages = await self.get_conversation_history(
+                conversation_id, order_desc=True
+            )
 
             conversation = Conversation(
                 conversation_id=db_conversation.conversation_id,
                 title=db_conversation.title,
                 created_at=db_conversation.created_at,
-                messages=messages
+                messages=messages,
             )
 
             return conversation
@@ -223,9 +258,9 @@ class ChatDatabase:
         self, conversation_id: str | None = None, title: str = "New Conversation"
     ) -> Conversation:
         """Create a new conversation."""
-        import uuid
-
         if not conversation_id:
+            import uuid
+
             conversation_id = str(uuid.uuid4())
 
         created_at = datetime.now(timezone.utc)
@@ -233,29 +268,33 @@ class ChatDatabase:
         with self.Session() as session:
             try:
                 # Check if conversation already exists
-                existing = session.query(SQLAConversation).filter(
-                    SQLAConversation.conversation_id == conversation_id
-                ).first()
-                
+                existing = (
+                    session.query(SQLAConversation)
+                    .filter(SQLAConversation.conversation_id == conversation_id)
+                    .first()
+                )
+
                 if existing:
-                    raise ValueError(f"Conversation with ID {conversation_id} already exists")
+                    raise ValueError(
+                        f"Conversation with ID {conversation_id} already exists"
+                    )
 
                 # Create new conversation
                 new_conversation = SQLAConversation(
-                    conversation_id=conversation_id,
-                    title=title,
-                    created_at=created_at
+                    conversation_id=conversation_id, title=title, created_at=created_at
                 )
                 session.add(new_conversation)
                 session.commit()
-                
-                logger.info(f"backend_003: Created new conv: \033[32m{conversation_id}\033[0m")
+
+                logger.info(
+                    f"backend_003: Created conv: \033[32m{conversation_id}\033[0m"
+                )
 
                 return Conversation(
-                    conversation_id=conversation_id, 
+                    conversation_id=conversation_id,
                     title=title,
-                    messages=[], 
-                    created_at=created_at
+                    messages=[],
+                    created_at=created_at,
                 )
             except Exception as e:
                 session.rollback()
@@ -268,12 +307,12 @@ class ChatDatabase:
             session.query(SQLAMessage).filter(
                 SQLAMessage.conversation_id == conversation_id
             ).delete()
-            
+
             # Delete conversation
             session.query(SQLAConversation).filter(
                 SQLAConversation.conversation_id == conversation_id
             ).delete()
-            
+
             session.commit()
             logger.info(f"backend_004: Deleted conv: \033[31m{conversation_id}\033[0m")
 
