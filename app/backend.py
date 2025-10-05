@@ -1,7 +1,9 @@
 import json
 import logging
 import os
+import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
@@ -31,16 +33,22 @@ class ChatDatabase:
     def _create_db_message_from_chat_message(self, message: ChatMessage) -> SQLAMessage:
         """Create SQLAlchemy Message from ChatMessage."""
         return SQLAMessage(
-            message_id=message.message_id,
+            message_id=message.message_id or str(uuid.uuid4()),
             conversation_id=message.conversation_id,
             role=message.role,
             text_format=message.text_format,
             text=message.text,
-            message_metadata=json.dumps(message.metadata) if message.metadata else None,
+            metadata_json=message.metadata_json,
             created_at=message.created_at,
-            llm_trace=json.dumps(message.llm_trace.dict())
-            if message.llm_trace
-            else None,
+            previous_message_id=message.previous_message_id,
+            model=message.model,
+            llm_model=message.llm_model,
+            input_tokens=message.input_tokens,
+            input_cached_tokens=message.input_cached_tokens,
+            output_tokens=message.output_tokens,
+            output_reasoning_tokens=message.output_reasoning_tokens,
+            total_tokens=message.total_tokens,
+            total_cost=message.total_cost,
         )
 
     def _update_db_message_from_chat_message(
@@ -51,35 +59,40 @@ class ChatDatabase:
         db_message.role = message.role
         db_message.text_format = message.text_format
         db_message.text = message.text
-        db_message.message_metadata = (
-            json.dumps(message.metadata) if message.metadata else None
-        )
+        db_message.metadata_json = message.metadata_json
         db_message.created_at = message.created_at
-        db_message.llm_trace = (
-            json.dumps(message.llm_trace.dict()) if message.llm_trace else None
-        )
+        db_message.previous_message_id = message.previous_message_id
+        db_message.model = message.model
+        db_message.llm_model = message.llm_model
+        db_message.input_tokens = message.input_tokens
+        db_message.input_cached_tokens = message.input_cached_tokens
+        db_message.output_tokens = message.output_tokens
+        db_message.output_reasoning_tokens = message.output_reasoning_tokens
+        db_message.total_tokens = message.total_tokens
+        db_message.total_cost = message.total_cost
 
     def _create_chat_message_from_db_message(
         self, db_message: SQLAMessage
     ) -> ChatMessage:
         """Create ChatMessage from SQLAlchemy Message."""
-        metadata = None
-        if db_message.message_metadata:
-            metadata = json.loads(db_message.message_metadata)
-
-        llm_trace = None
-        if db_message.llm_trace:
-            llm_trace = json.loads(db_message.llm_trace)
-
         return ChatMessage(
-            message_id=db_message.message_id,
-            conversation_id=db_message.conversation_id,
+            message_id=str(db_message.message_id),
+            conversation_id=str(db_message.conversation_id),
             role=db_message.role,
             text_format=db_message.text_format,
             text=db_message.text,
-            metadata=metadata,
+            metadata=db_message.metadata_json,  # Используем metadata вместо metadata_json
             created_at=db_message.created_at,
-            llm_trace=llm_trace,
+            previous_message_id=str(db_message.previous_message_id) if db_message.previous_message_id else None,
+            model=db_message.model,
+            # Дополнительные поля для PostgreSQL
+            input_tokens=db_message.input_tokens,
+            input_cached_tokens=db_message.input_cached_tokens,
+            output_tokens=db_message.output_tokens,
+            output_reasoning_tokens=db_message.output_reasoning_tokens,
+            total_tokens=db_message.total_tokens,
+            total_cost=db_message.total_cost,
+            llm_model=db_message.llm_model,
         )
 
     async def save_message(self, message: ChatMessage) -> None:
@@ -103,20 +116,22 @@ class ChatDatabase:
             )
             if db_conversation:
                 db_conversation.created_at = conversation.created_at
+                db_conversation.updated_at = conversation.updated_at
                 db_conversation.title = conversation.title
-                db_conversation.llm_trace = (
-                    json.dumps(conversation.llm_trace.dict())
-                    if conversation.llm_trace
-                    else None
-                )
+                db_conversation.total_input_tokens = conversation.total_input_tokens
+                db_conversation.total_output_tokens = conversation.total_output_tokens
+                db_conversation.total_tokens = conversation.total_tokens
+                db_conversation.total_cost = conversation.total_cost
             else:
                 db_conversation = SQLAConversation(
                     conversation_id=conversation.conversation_id,
                     title=conversation.title,
                     created_at=conversation.created_at,
-                    llm_trace=json.dumps(conversation.llm_trace.dict())
-                    if conversation.llm_trace
-                    else None,
+                    updated_at=conversation.updated_at,
+                    total_input_tokens=conversation.total_input_tokens,
+                    total_output_tokens=conversation.total_output_tokens,
+                    total_tokens=conversation.total_tokens,
+                    total_cost=conversation.total_cost,
                 )
                 session.add(db_conversation)
 
@@ -184,6 +199,11 @@ class ChatDatabase:
                     conversation_id=conversation_id,
                     title="New Conversation",
                     created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc),
+                    total_input_tokens=0,
+                    total_output_tokens=0,
+                    total_tokens=0,
+                    total_cost=Decimal("0.000000"),
                 )
                 session.add(new_conversation)
                 session.commit()
@@ -219,6 +239,11 @@ class ChatDatabase:
                     conversation_id=db_conv.conversation_id,
                     title=db_conv.title,
                     created_at=db_conv.created_at,
+                    updated_at=db_conv.updated_at,
+                    total_input_tokens=db_conv.total_input_tokens,
+                    total_output_tokens=db_conv.total_output_tokens,
+                    total_tokens=db_conv.total_tokens,
+                    total_cost=db_conv.total_cost,
                     messages=[],
                 )
                 conversations.append(conversation)
@@ -249,6 +274,11 @@ class ChatDatabase:
                 conversation_id=db_conversation.conversation_id,
                 title=db_conversation.title,
                 created_at=db_conversation.created_at,
+                updated_at=db_conversation.updated_at,
+                total_input_tokens=db_conversation.total_input_tokens,
+                total_output_tokens=db_conversation.total_output_tokens,
+                total_tokens=db_conversation.total_tokens,
+                total_cost=db_conversation.total_cost,
                 messages=messages,
             )
 
@@ -259,11 +289,10 @@ class ChatDatabase:
     ) -> Conversation:
         """Create a new conversation."""
         if not conversation_id:
-            import uuid
-
             conversation_id = str(uuid.uuid4())
 
         created_at = datetime.now(timezone.utc)
+        updated_at = created_at
 
         with self.Session() as session:
             try:
@@ -281,7 +310,14 @@ class ChatDatabase:
 
                 # Create new conversation
                 new_conversation = SQLAConversation(
-                    conversation_id=conversation_id, title=title, created_at=created_at
+                    conversation_id=conversation_id,
+                    title=title,
+                    created_at=created_at,
+                    updated_at=updated_at,
+                    total_input_tokens=0,
+                    total_output_tokens=0,
+                    total_tokens=0,
+                    total_cost=Decimal("0.000000"),
                 )
                 session.add(new_conversation)
                 session.commit()
@@ -295,6 +331,11 @@ class ChatDatabase:
                     title=title,
                     messages=[],
                     created_at=created_at,
+                    updated_at=updated_at,
+                    total_input_tokens=0,
+                    total_output_tokens=0,
+                    total_tokens=0,
+                    total_cost=Decimal("0.000000"),
                 )
             except Exception as e:
                 session.rollback()

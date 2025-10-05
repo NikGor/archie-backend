@@ -1,74 +1,92 @@
 from datetime import datetime, timezone
-from typing import Literal
+from decimal import Decimal
+from typing import List, Literal, Optional
 
+from archie_shared.chat.models import (
+    ChatMessage as BaseChatMessage,
+    ConversationModel as BaseConversation,
+    ChatRequest as BaseChatRequest,
+    LllmTrace,
+)
 from pydantic import BaseModel, Field
 
 
-class LllmTrace(BaseModel):
-    """LLM usage tracking information"""
-
-    model: str = Field(description="Name of the LLM model used")
-    input_tokens: int = Field(description="Number of input tokens consumed")
-    output_tokens: int = Field(description="Number of output tokens generated")
-    total_tokens: int = Field(description="Total number of tokens used")
-    total_cost: float = Field(description="Total cost of the request")
+# Используем базовые модели из archie_shared, но расширяем их для PostgreSQL
 
 
-class ChatMessage(BaseModel):
-    """Chat message model for all communications"""
+class ChatMessage(BaseChatMessage):
+    """Extended chat message model with PostgreSQL-specific fields"""
 
-    message_id: str | None = Field(
-        None, description="Unique identifier for the message"
+    # Дополнительные поля для PostgreSQL
+    input_tokens: Optional[int] = Field(
+        None, description="Number of input tokens used"
     )
-    role: Literal["user", "assistant", "system"] = Field(
-        description="Role of the message sender"
+    input_cached_tokens: int = Field(
+        0, description="Number of cached input tokens used"
     )
-    text_format: Literal["plain", "markdown", "html", "voice"] = Field(
-        "plain", description="Format of the message text"
+    output_tokens: Optional[int] = Field(
+        None, description="Number of output tokens generated"
     )
-    text: str = Field(description="Content of the message")
-    metadata: dict | None = Field(
-        None, description="Additional metadata for the message"
+    output_reasoning_tokens: int = Field(
+        0, description="Number of reasoning tokens used"
     )
-    created_at: datetime = Field(
+    total_tokens: Optional[int] = Field(
+        None, description="Total tokens used"
+    )
+    total_cost: Optional[Decimal] = Field(
+        None, description="Total cost of the request"
+    )
+    llm_model: Optional[str] = Field(
+        None, description="LLM model used for generating this message"
+    )
+
+    @property
+    def metadata_json(self) -> Optional[dict]:
+        """Convert metadata to dict for PostgreSQL JSONB storage"""
+        if self.metadata is None:
+            return None
+        return self.metadata.model_dump() if hasattr(self.metadata, 'model_dump') else self.metadata
+
+
+class Conversation(BaseConversation):
+    """Extended conversation model with PostgreSQL-specific fields"""
+
+    # Дополнительные поля для PostgreSQL
+    updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        description="Timestamp when the message was created",
+        description="Timestamp when the conversation was last updated",
     )
-    conversation_id: str | None = Field(
-        None, description="ID of the conversation this message belongs to"
+    total_input_tokens: int = Field(
+        0, description="Total input tokens used in this conversation"
     )
-    llm_trace: LllmTrace | None = Field(
-        None, description="LLM usage tracking information"
+    total_output_tokens: int = Field(
+        0, description="Total output tokens generated in this conversation"
+    )
+    total_tokens: int = Field(
+        0, description="Total tokens used in this conversation"
+    )
+    total_cost: Decimal = Field(
+        Decimal("0.000000"), description="Total cost of this conversation"
     )
 
 
-class Conversation(BaseModel):
-    """Conversation model containing multiple messages"""
-
-    conversation_id: str = Field(description="Unique identifier for the conversation")
-    title: str = Field(
-        default="New Conversation", description="Title of the conversation"
-    )
-    messages: list[ChatMessage] | None = Field(
-        default=None, description="List of messages in the conversation"
-    )
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        description="Timestamp when the conversation was created",
-    )
-    llm_trace: LllmTrace | None = Field(
-        None, description="Aggregated LLM usage tracking for the conversation"
+# Используем ChatRequest из archie_shared как базу для наших запросов
+class MessageRequest(BaseChatRequest):
+    """Extended message request model"""
+    
+    metadata_json: Optional[dict] = Field(
+        None, description="Additional metadata for the message in JSON format" 
     )
 
 
 class ConversationRequest(BaseModel):
     """Request model for creating a new conversation"""
 
-    conversation_id: str | None = Field(
+    conversation_id: Optional[str] = Field(
         None,
         description="Optional custom conversation ID. If not provided, will be auto-generated",
     )
-    title: str | None = Field(
+    title: Optional[str] = Field(
         "New Conversation", description="Title of the conversation"
     )
 
@@ -83,25 +101,6 @@ class ConversationResponse(BaseModel):
     )
     message: str = Field(
         "Conversation created successfully", description="Success message"
-    )
-
-
-class MessageRequest(BaseModel):
-    """Request model for creating a new message"""
-
-    role: Literal["user", "assistant", "system"] = Field(
-        description="Role of the message sender"
-    )
-    text: str = Field(description="Content of the message")
-    text_format: Literal["plain", "markdown", "html", "voice"] = Field(
-        "plain", description="Format of the message text"
-    )
-    conversation_id: str | None = Field(
-        None,
-        description="ID of the conversation. If not provided, a new conversation will be created",
-    )
-    metadata: dict | None = Field(
-        None, description="Additional metadata for the message"
     )
 
 
@@ -121,14 +120,14 @@ class ChatHistoryMessage(BaseModel):
         description="Role of the message sender"
     )
     text: str = Field(description="Content of the message (cleaned to plain text)")
-    metadata: dict | None = Field(
-        None, description="Additional metadata for the message"
+    metadata_json: Optional[dict] = Field(
+        None, description="Additional metadata for the message in JSON format"
     )
 
 
 class ChatHistoryResponse(BaseModel):
     """Response model for chat history endpoint"""
 
-    messages: list[ChatHistoryMessage] = Field(
+    messages: List[ChatHistoryMessage] = Field(
         description="List of messages in the conversation"
     )
