@@ -3,9 +3,9 @@ import logging
 from fastapi import HTTPException
 
 from app.backend import get_database
-from app.models import (
-    ChatMessage,
-    Conversation,
+from archie_shared.chat.models import (
+    ChatMessage, 
+    ConversationModel as Conversation,
     ConversationRequest,
     ConversationResponse,
     MessageResponse,

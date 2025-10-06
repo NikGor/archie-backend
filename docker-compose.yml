@@ -7,13 +7,13 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/archie_db
+      - DATABASE_URL=postgresql://homeassistant_user:homeassistant_password@host.docker.internal:5432/homeassistant_db
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
@@ -22,25 +22,6 @@ services:
       - shared_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/docs"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  postgres:
-    image: postgres:15
-    container_name: archie-postgres
-    environment:
-      POSTGRES_DB: archie_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "8003:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - shared_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -62,7 +43,6 @@ services:
       retries: 3
 
 volumes:
-  postgres_data:
   redis_data:
 
 networks:

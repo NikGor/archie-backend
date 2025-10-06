@@ -1,13 +1,12 @@
 import os
 from datetime import datetime, timezone
-from decimal import Decimal
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 Base = declarative_base()
-
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 class Conversation(Base):
     __tablename__ = "ai_assistant_conversation"
@@ -20,9 +19,11 @@ class Conversation(Base):
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     total_input_tokens = Column(Integer, nullable=False, default=0)
+    total_input_cached_tokens = Column(Integer, nullable=False, default=0)
     total_output_tokens = Column(Integer, nullable=False, default=0)
+    total_output_reasoning_tokens = Column(Integer, nullable=False, default=0)
     total_tokens = Column(Integer, nullable=False, default=0)
-    total_cost = Column(Numeric(10, 6), nullable=False, default=Decimal("0.000000"))
+    total_cost = Column(Float, nullable=False, default=0.0)
     messages = relationship("Message", back_populates="conversation")
 
 
@@ -48,8 +49,5 @@ class Message(Base):
     output_tokens = Column(Integer, nullable=True)
     output_reasoning_tokens = Column(Integer, nullable=False, default=0)
     total_tokens = Column(Integer, nullable=True)
-    total_cost = Column(Numeric(10, 6), nullable=True)
+    total_cost = Column(Float, nullable=True)
     conversation = relationship("Conversation", back_populates="messages")
-
-
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/chat.db")

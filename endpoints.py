@@ -5,9 +5,9 @@ from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from api_controller import get_api_controller
-from app.models import (
+from archie_shared.chat.models import (
     ChatMessage,
-    Conversation,
+    ConversationModel as Conversation,
     ConversationRequest,
     ConversationResponse,
     MessageResponse,
