@@ -8,7 +8,6 @@ from app.models import (
     Conversation,
     ConversationRequest,
     ConversationResponse,
-    MessageRequest,
     MessageResponse,
 )
 from utils import clean_text_to_plain, generate_conversation_id, generate_message_id
@@ -130,7 +129,7 @@ class ApiController:
 
     async def create_new_message(
         self,
-        request: MessageRequest,
+        request: ChatMessage,
     ) -> MessageResponse:
         """Create a new message in a conversation."""
         try:
@@ -158,20 +157,20 @@ class ApiController:
                         detail=f"Conversation {conversation_id} not found",
                     )
 
-            # Create message
-            message = ChatMessage(
-                message_id=generate_message_id(),
-                role=request.role,
-                text=request.text,
-                text_format=request.text_format,
-                conversation_id=conversation_id,
-                metadata=request.metadata,
-            )
+            # Use provided message or generate missing fields
+            message = request
+            if not message.message_id:
+                message.message_id = generate_message_id()
+            if not message.conversation_id:
+                message.conversation_id = conversation_id
 
             # Save message to database
             await self.db.save_message(message)
+            
+            # Log with indication of whether ID was provided or generated
+            id_source = "provided" if request.message_id else "generated"
             logger.info(
-                f"api_controller_007: Created msg: \033[36m{message.message_id}\033[0m, Role: \033[35m{request.role}\033[0m"
+                f"api_controller_007: Created msg: \033[36m{message.message_id}\033[0m (\033[33m{id_source}\033[0m), Role: \033[35m{message.role}\033[0m"
             )
 
             return MessageResponse(
@@ -214,7 +213,7 @@ class ApiController:
 
                     # Only include metadata if it exists
                     if message.metadata:
-                        message_dict["metadata"] = message.metadata
+                        message_dict["metadata"] = message.metadata.model_dump() if hasattr(message.metadata, 'model_dump') else message.metadata
 
                     history_messages.append(message_dict)
 

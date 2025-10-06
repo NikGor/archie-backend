@@ -10,7 +10,6 @@ from app.models import (
     Conversation,
     ConversationRequest,
     ConversationResponse,
-    MessageRequest,
     MessageResponse,
 )
 
@@ -78,7 +77,7 @@ async def get_messages(
     summary="Create a new message",
     description="Create a new message in an existing conversation or automatically create a new conversation if conversation_id is not provided",
 )
-async def create_message(request: MessageRequest) -> MessageResponse:
+async def create_message(request: ChatMessage) -> MessageResponse:
     """Create a new message in a conversation. If conversation_id is not provided, creates a new conversation."""
     return await controller.create_new_message(request)
 

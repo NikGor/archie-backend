@@ -1,9 +1,8 @@
 import os
 from datetime import datetime, timezone
 from decimal import Decimal
-
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -43,6 +42,7 @@ class Message(Base):
     previous_message_id = Column(String, nullable=True)
     model = Column(Text, nullable=True)
     llm_model = Column(Text, nullable=True)
+    llm_trace = Column(JSONB, nullable=True)
     input_tokens = Column(Integer, nullable=True)
     input_cached_tokens = Column(Integer, nullable=False, default=0)
     output_tokens = Column(Integer, nullable=True)

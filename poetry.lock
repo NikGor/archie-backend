@@ -51,6 +51,25 @@ test = ["anyio[trio]", "coverage[toml] (>=4.5)", "hypothesis (>=4.0)", "mock (>=
 trio = ["trio (<0.22)"]
 
 [[package]]
+name = "archie-shared"
+version = "0.1.12"
+description = "Shared Pydantic models and utilities for Archie ecosystem"
+optional = false
+python-versions = ">=3.11.0rc1,<4.0"
+files = []
+develop = false
+
+[package.dependencies]
+pydantic = "^2.11.4"
+
+[package.source]
+type = "git"
+url = "https://github.com/NikGor/homeassistant.git"
+reference = "v0.1.12"
+resolved_reference = "c6677f6dfae8acc6ac8546279f2f3701f3887545"
+subdirectory = "archie-shared"
+
+[[package]]
 name = "async-timeout"
 version = "5.0.1"
 description = "Timeout context manager for asyncio programs"
@@ -1366,4 +1385,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "234a0b12e824c0307c59c62582b2589dd5d425093c6f319e301b24be90e06cb5"
+content-hash = "5d3bef837a8b7dbb4396064367ad605579d6fb5fb84d1514d6630008977eaf48"

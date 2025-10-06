@@ -3,7 +3,6 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
@@ -203,7 +202,7 @@ class ChatDatabase:
                     total_input_tokens=0,
                     total_output_tokens=0,
                     total_tokens=0,
-                    total_cost=Decimal("0.000000"),
+                    total_cost=0.0,
                 )
                 session.add(new_conversation)
                 session.commit()
@@ -317,7 +316,7 @@ class ChatDatabase:
                     total_input_tokens=0,
                     total_output_tokens=0,
                     total_tokens=0,
-                    total_cost=Decimal("0.000000"),
+                    total_cost=0.0,
                 )
                 session.add(new_conversation)
                 session.commit()
@@ -335,7 +334,7 @@ class ChatDatabase:
                     total_input_tokens=0,
                     total_output_tokens=0,
                     total_tokens=0,
-                    total_cost=Decimal("0.000000"),
+                    total_cost=0.0,
                 )
             except Exception as e:
                 session.rollback()
