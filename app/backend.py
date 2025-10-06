@@ -12,7 +12,7 @@ from database import Base
 from database import Conversation as SQLAConversation
 from database import Message as SQLAMessage
 
-from .models import ChatMessage, Conversation
+from archie_shared.chat.models import ChatMessage, Conversation
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -37,17 +37,18 @@ class ChatDatabase:
             role=message.role,
             text_format=message.text_format,
             text=message.text,
-            metadata_json=message.metadata_json,
+            metadata_json=json.dumps(message.metadata) if message.metadata else None,
             created_at=message.created_at,
             previous_message_id=message.previous_message_id,
             model=message.model,
-            llm_model=message.llm_model,
-            input_tokens=message.input_tokens,
-            input_cached_tokens=message.input_cached_tokens,
-            output_tokens=message.output_tokens,
-            output_reasoning_tokens=message.output_reasoning_tokens,
-            total_tokens=message.total_tokens,
-            total_cost=message.total_cost,
+            llm_model=message.llm_trace.model if message.llm_trace else None,
+            input_tokens=message.llm_trace.input_tokens if message.llm_trace else 0,
+            input_cached_tokens=message.llm_trace.input_cached_tokens if message.llm_trace else 0,
+            output_tokens=message.llm_trace.output_tokens if message.llm_trace else 0,
+            output_reasoning_tokens=message.llm_trace.output_reasoning_tokens if message.llm_trace else 0,
+            total_tokens=message.llm_trace.total_tokens if message.llm_trace else 0,
+            total_cost=message.llm_trace.total_cost if message.llm_trace else 0.0,
+            llm_trace=json.dumps(message.llm_trace.model_dump()) if message.llm_trace else None,
         )
 
     def _update_db_message_from_chat_message(
@@ -58,40 +59,52 @@ class ChatDatabase:
         db_message.role = message.role
         db_message.text_format = message.text_format
         db_message.text = message.text
-        db_message.metadata_json = message.metadata_json
+        db_message.metadata_json = json.dumps(message.metadata) if message.metadata else None
         db_message.created_at = message.created_at
         db_message.previous_message_id = message.previous_message_id
         db_message.model = message.model
-        db_message.llm_model = message.llm_model
-        db_message.input_tokens = message.input_tokens
-        db_message.input_cached_tokens = message.input_cached_tokens
-        db_message.output_tokens = message.output_tokens
-        db_message.output_reasoning_tokens = message.output_reasoning_tokens
-        db_message.total_tokens = message.total_tokens
-        db_message.total_cost = message.total_cost
+        db_message.llm_model = message.llm_trace.model if message.llm_trace else None
+        db_message.input_tokens = message.llm_trace.input_tokens if message.llm_trace else 0
+        db_message.input_cached_tokens = message.llm_trace.input_cached_tokens if message.llm_trace else 0
+        db_message.output_tokens = message.llm_trace.output_tokens if message.llm_trace else 0
+        db_message.output_reasoning_tokens = message.llm_trace.output_reasoning_tokens if message.llm_trace else 0
+        db_message.total_tokens = message.llm_trace.total_tokens if message.llm_trace else 0
+        db_message.total_cost = message.llm_trace.total_cost if message.llm_trace else 0.0
+        db_message.llm_trace = json.dumps(message.llm_trace.model_dump()) if message.llm_trace else None
 
     def _create_chat_message_from_db_message(
         self, db_message: SQLAMessage
     ) -> ChatMessage:
         """Create ChatMessage from SQLAlchemy Message."""
+        # Parse metadata from JSON
+        metadata = None
+        if db_message.metadata_json:
+            try:
+                metadata = json.loads(db_message.metadata_json)
+            except json.JSONDecodeError:
+                metadata = None
+
+        # Parse llm_trace from JSON
+        llm_trace = None
+        if db_message.llm_trace:
+            try:
+                from archie_shared.chat.models import LllmTrace
+                llm_trace_data = json.loads(db_message.llm_trace)
+                llm_trace = LllmTrace(**llm_trace_data)
+            except (json.JSONDecodeError, TypeError):
+                llm_trace = None
+
         return ChatMessage(
             message_id=str(db_message.message_id),
             conversation_id=str(db_message.conversation_id),
             role=db_message.role,
             text_format=db_message.text_format,
             text=db_message.text,
-            metadata=db_message.metadata_json,  # Используем metadata вместо metadata_json
+            metadata=metadata,
             created_at=db_message.created_at,
             previous_message_id=str(db_message.previous_message_id) if db_message.previous_message_id else None,
             model=db_message.model,
-            # Дополнительные поля для PostgreSQL
-            input_tokens=db_message.input_tokens,
-            input_cached_tokens=db_message.input_cached_tokens,
-            output_tokens=db_message.output_tokens,
-            output_reasoning_tokens=db_message.output_reasoning_tokens,
-            total_tokens=db_message.total_tokens,
-            total_cost=db_message.total_cost,
-            llm_model=db_message.llm_model,
+            llm_trace=llm_trace,
         )
 
     async def save_message(self, message: ChatMessage) -> None:
