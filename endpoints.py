@@ -53,6 +53,17 @@ async def get_conversation(conversation_id: str) -> Conversation:
     return await controller.get_conversation_metadata(conversation_id)
 
 
+@router.delete(
+    "/conversations/{conversation_id}",
+    tags=["conversations"],
+    summary="Delete conversation",
+    description="Delete a conversation and all its messages permanently",
+)
+async def delete_conversation(conversation_id: str) -> dict[str, str]:
+    """Delete a conversation and all its messages."""
+    return await controller.delete_conversation(conversation_id)
+
+
 @router.get(
     "/messages",
     tags=["messages"],

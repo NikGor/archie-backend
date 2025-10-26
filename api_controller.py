@@ -100,6 +100,37 @@ class ApiController:
                 500, f"Failed to get conversation: {e!s}", "003"
             )
 
+    async def delete_conversation(
+        self,
+        conversation_id: str,
+    ) -> dict[str, str]:
+        """Delete a conversation and all its messages."""
+        try:
+            # Check if conversation exists first
+            conversation = await self.db.get_conversation_with_messages(conversation_id)
+            if not conversation:
+                logger.info(
+                    f"api_controller_010: Conv to delete not found: \033[36m{conversation_id}\033[0m"
+                )
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Conversation {conversation_id} not found",
+                )
+            
+            # Delete the conversation and its messages
+            await self.db.delete_conversation(conversation_id)
+            logger.info(
+                f"api_controller_011: Conv deleted: \033[31m{conversation_id}\033[0m"
+            )
+            
+            return {"message": f"Conversation {conversation_id} deleted successfully"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise self.create_http_exception(
+                500, f"Failed to delete conversation: {e!s}", "004"
+            )
+
     async def get_messages_by_conversation(
         self,
         conversation_id: str | None = None,
