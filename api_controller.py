@@ -100,6 +100,33 @@ class ApiController:
                 500, f"Failed to get conversation: {e!s}", "003"
             )
 
+    async def update_conversation(
+        self,
+        conversation_id: str,
+        title: str,
+    ) -> Conversation:
+        """Update conversation title."""
+        try:
+            # Update the conversation
+            conversation = await self.db.update_conversation(conversation_id, title)
+            logger.info(
+                f"api_controller_012: Conv updated: \033[33m{conversation_id}\033[0m, title: \033[32m{title}\033[0m"
+            )
+            return conversation
+        except ValueError as e:
+            # Conversation not found
+            logger.info(
+                f"api_controller_013: Conv to update not found: \033[36m{conversation_id}\033[0m"
+            )
+            raise HTTPException(
+                status_code=404,
+                detail=f"Conversation {conversation_id} not found",
+            )
+        except Exception as e:
+            raise self.create_http_exception(
+                500, f"Failed to update conversation: {e!s}", "005"
+            )
+
     async def delete_conversation(
         self,
         conversation_id: str,

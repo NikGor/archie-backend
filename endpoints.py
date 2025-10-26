@@ -3,6 +3,7 @@ import logging
 import yaml
 from fastapi import APIRouter, Query
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from api_controller import get_api_controller
 from archie_shared.chat.models import (
@@ -16,6 +17,11 @@ from archie_shared.chat.models import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 controller = get_api_controller()
+
+
+class UpdateConversationRequest(BaseModel):
+    """Request model for updating conversation."""
+    title: str
 
 
 @router.get(
@@ -51,6 +57,19 @@ async def create_conversation(request: ConversationRequest) -> ConversationRespo
 async def get_conversation(conversation_id: str) -> Conversation:
     """Get conversation metadata (without messages)."""
     return await controller.get_conversation_metadata(conversation_id)
+
+
+@router.put(
+    "/conversations/{conversation_id}",
+    tags=["conversations"],
+    summary="Update conversation",
+    description="Update conversation title",
+)
+async def update_conversation(
+    conversation_id: str, request: UpdateConversationRequest
+) -> Conversation:
+    """Update conversation title."""
+    return await controller.update_conversation(conversation_id, request.title)
 
 
 @router.delete(
