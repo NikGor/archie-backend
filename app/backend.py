@@ -349,6 +349,43 @@ class ChatDatabase:
                 session.rollback()
                 raise e
 
+    async def update_conversation(self, conversation_id: str, title: str) -> Conversation:
+        """Update conversation title."""
+        with self.Session() as session:
+            try:
+                # Find the conversation
+                conversation = (
+                    session.query(SQLAConversation)
+                    .filter(SQLAConversation.conversation_id == conversation_id)
+                    .first()
+                )
+
+                if not conversation:
+                    raise ValueError(f"Conversation {conversation_id} not found")
+
+                # Update title and updated_at
+                conversation.title = title
+                conversation.updated_at = datetime.now(timezone.utc)
+                
+                session.commit()
+                logger.info(f"backend_005: Updated conv title: \033[33m{conversation_id}\033[0m")
+
+                # Return updated conversation
+                return Conversation(
+                    conversation_id=conversation.conversation_id,
+                    title=conversation.title,
+                    messages=[],
+                    created_at=conversation.created_at,
+                    updated_at=conversation.updated_at,
+                    total_input_tokens=conversation.total_input_tokens,
+                    total_output_tokens=conversation.total_output_tokens,
+                    total_tokens=conversation.total_tokens,
+                    total_cost=conversation.total_cost,
+                )
+            except Exception as e:
+                session.rollback()
+                raise e
+
     async def delete_conversation(self, conversation_id: str) -> None:
         """Delete a conversation and all its messages."""
         with self.Session() as session:
