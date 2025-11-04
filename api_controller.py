@@ -1,15 +1,14 @@
 import logging
 
-from fastapi import HTTPException
-
-from app.backend import get_database
 from archie_shared.chat.models import (
-    ChatMessage, 
-    ConversationModel as Conversation,
+    ChatMessage,
     ConversationRequest,
     ConversationResponse,
     MessageResponse,
 )
+from archie_shared.chat.models import Conversation
+from fastapi import HTTPException
+from app.backend import get_database
 from utils import clean_text_to_plain, generate_conversation_id, generate_message_id
 
 logger = logging.getLogger(__name__)
@@ -113,7 +112,7 @@ class ApiController:
                 f"api_controller_012: Conv updated: \033[33m{conversation_id}\033[0m, title: \033[32m{title}\033[0m"
             )
             return conversation
-        except ValueError as e:
+        except ValueError:
             # Conversation not found
             logger.info(
                 f"api_controller_013: Conv to update not found: \033[36m{conversation_id}\033[0m"
@@ -143,13 +142,13 @@ class ApiController:
                     status_code=404,
                     detail=f"Conversation {conversation_id} not found",
                 )
-            
+
             # Delete the conversation and its messages
             await self.db.delete_conversation(conversation_id)
             logger.info(
                 f"api_controller_011: Conv deleted: \033[31m{conversation_id}\033[0m"
             )
-            
+
             return {"message": f"Conversation {conversation_id} deleted successfully"}
         except HTTPException:
             raise
@@ -224,7 +223,7 @@ class ApiController:
 
             # Save message to database
             await self.db.save_message(message)
-            
+
             # Log with indication of whether ID was provided or generated
             id_source = "provided" if request.message_id else "generated"
             logger.info(
@@ -265,14 +264,11 @@ class ApiController:
             if conversation.messages:
                 for message in conversation.messages:
                     # Clean text based on format
-                    clean_text = clean_text_to_plain(message.text, message.text_format)
+                    clean_text = clean_text_to_plain(
+                        message.content.text, message.content.content_format
+                    )
 
                     message_dict = {"role": message.role, "text": clean_text}
-
-                    # Only include metadata if it exists
-                    if message.metadata:
-                        message_dict["metadata"] = message.metadata.model_dump() if hasattr(message.metadata, 'model_dump') else message.metadata
-
                     history_messages.append(message_dict)
 
             logger.info(

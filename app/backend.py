@@ -4,15 +4,13 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+from archie_shared.chat.models import ChatMessage, Conversation
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from database import Base
 from database import Conversation as SQLAConversation
 from database import Message as SQLAMessage
-
-from archie_shared.chat.models import ChatMessage, ConversationModel as Conversation
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -23,7 +21,9 @@ class ChatDatabase:
         self.db_url = db_url or os.getenv("DATABASE_URL", "sqlite:///data/chat.db")
         self.engine = create_engine(self.db_url)
         self.Session = sessionmaker(bind=self.engine)
-        logger.info(f"backend_001: Database connection established: \033[36m{self.db_url}\033[0m")
+        logger.info(
+            f"backend_001: Database connection established: \033[36m{self.db_url}\033[0m"
+        )
 
     def _create_db_message_from_chat_message(self, message: ChatMessage) -> SQLAMessage:
         """Create SQLAlchemy Message from ChatMessage."""
@@ -31,20 +31,24 @@ class ChatDatabase:
             message_id=message.message_id or str(uuid.uuid4()),
             conversation_id=message.conversation_id,
             role=message.role,
-            text_format=message.text_format,
-            text=message.text,
-            metadata_json=json.dumps(message.metadata) if message.metadata and not hasattr(message.metadata, 'model_dump') else (message.metadata.model_dump_json() if hasattr(message.metadata, 'model_dump') else None),
+            content=json.dumps(message.content.model_dump()),
             created_at=message.created_at,
             previous_message_id=message.previous_message_id,
             model=message.model,
             llm_model=message.llm_trace.model if message.llm_trace else None,
             input_tokens=message.llm_trace.input_tokens if message.llm_trace else 0,
-            input_cached_tokens=message.llm_trace.input_tokens_details.cached_tokens if message.llm_trace and message.llm_trace.input_tokens_details else 0,
+            input_cached_tokens=message.llm_trace.input_tokens_details.cached_tokens
+            if message.llm_trace and message.llm_trace.input_tokens_details
+            else 0,
             output_tokens=message.llm_trace.output_tokens if message.llm_trace else 0,
-            output_reasoning_tokens=message.llm_trace.output_tokens_details.reasoning_tokens if message.llm_trace and message.llm_trace.output_tokens_details else 0,
+            output_reasoning_tokens=message.llm_trace.output_tokens_details.reasoning_tokens
+            if message.llm_trace and message.llm_trace.output_tokens_details
+            else 0,
             total_tokens=message.llm_trace.total_tokens if message.llm_trace else 0,
             total_cost=message.llm_trace.total_cost if message.llm_trace else 0.0,
-            llm_trace=message.llm_trace.model_dump_json() if message.llm_trace else None,
+            llm_trace=message.llm_trace.model_dump_json()
+            if message.llm_trace
+            else None,
         )
 
     def _update_db_message_from_chat_message(
@@ -53,52 +57,67 @@ class ChatDatabase:
         """Update SQLAlchemy Message from ChatMessage."""
         db_message.conversation_id = message.conversation_id
         db_message.role = message.role
-        db_message.text_format = message.text_format
-        db_message.text = message.text
-        db_message.metadata_json = json.dumps(message.metadata) if message.metadata and not hasattr(message.metadata, 'model_dump') else (message.metadata.model_dump_json() if hasattr(message.metadata, 'model_dump') else None)
+        db_message.content = json.dumps(message.content.model_dump())
         db_message.created_at = message.created_at
         db_message.previous_message_id = message.previous_message_id
         db_message.model = message.model
         db_message.llm_model = message.llm_trace.model if message.llm_trace else None
-        db_message.input_tokens = message.llm_trace.input_tokens if message.llm_trace else 0
-        db_message.input_cached_tokens = message.llm_trace.input_tokens_details.cached_tokens if message.llm_trace and message.llm_trace.input_tokens_details else 0
-        db_message.output_tokens = message.llm_trace.output_tokens if message.llm_trace else 0
-        db_message.output_reasoning_tokens = message.llm_trace.output_tokens_details.reasoning_tokens if message.llm_trace and message.llm_trace.output_tokens_details else 0
-        db_message.total_tokens = message.llm_trace.total_tokens if message.llm_trace else 0
-        db_message.total_cost = message.llm_trace.total_cost if message.llm_trace else 0.0
-        db_message.llm_trace = message.llm_trace.model_dump_json() if message.llm_trace else None
+        db_message.input_tokens = (
+            message.llm_trace.input_tokens if message.llm_trace else 0
+        )
+        db_message.input_cached_tokens = (
+            message.llm_trace.input_tokens_details.cached_tokens
+            if message.llm_trace and message.llm_trace.input_tokens_details
+            else 0
+        )
+        db_message.output_tokens = (
+            message.llm_trace.output_tokens if message.llm_trace else 0
+        )
+        db_message.output_reasoning_tokens = (
+            message.llm_trace.output_tokens_details.reasoning_tokens
+            if message.llm_trace and message.llm_trace.output_tokens_details
+            else 0
+        )
+        db_message.total_tokens = (
+            message.llm_trace.total_tokens if message.llm_trace else 0
+        )
+        db_message.total_cost = (
+            message.llm_trace.total_cost if message.llm_trace else 0.0
+        )
+        db_message.llm_trace = (
+            message.llm_trace.model_dump_json() if message.llm_trace else None
+        )
 
     def _create_chat_message_from_db_message(
         self, db_message: SQLAMessage
     ) -> ChatMessage:
         """Create ChatMessage from SQLAlchemy Message."""
-        # Parse metadata from JSON
-        metadata = None
-        if db_message.metadata_json:
-            try:
-                metadata = json.loads(db_message.metadata_json)
-            except json.JSONDecodeError:
-                metadata = None
-
         # Parse llm_trace from JSON
         llm_trace = None
         if db_message.llm_trace:
             try:
                 from archie_shared.chat.models import LllmTrace
+
                 llm_trace_data = json.loads(db_message.llm_trace)
                 llm_trace = LllmTrace(**llm_trace_data)
             except (json.JSONDecodeError, TypeError):
                 llm_trace = None
 
+        # Parse content from JSON
+        from archie_shared.ui.models import Content
+
+        content_data = json.loads(db_message.content)
+        content = Content(**content_data)
+
         return ChatMessage(
             message_id=str(db_message.message_id),
             conversation_id=str(db_message.conversation_id),
             role=db_message.role,
-            text_format=db_message.text_format,
-            text=db_message.text,
-            metadata=metadata,
+            content=content,
             created_at=db_message.created_at,
-            previous_message_id=str(db_message.previous_message_id) if db_message.previous_message_id else None,
+            previous_message_id=str(db_message.previous_message_id)
+            if db_message.previous_message_id
+            else None,
             model=db_message.model,
             llm_trace=llm_trace,
         )
@@ -178,20 +197,6 @@ class ChatDatabase:
             ]
 
             return messages
-
-    async def get_conversation_history_for_agent(
-        self, conversation_id: str
-    ) -> list[dict[str, str]]:
-        """Get conversation history in OpenAI API compatible format (chronological order)."""
-        with self.Session() as session:
-            messages = (
-                session.query(SQLAMessage)
-                .filter(SQLAMessage.conversation_id == conversation_id)
-                .order_by(SQLAMessage.created_at.asc())
-                .all()
-            )
-
-            return [{"role": msg.role, "content": msg.text} for msg in messages]
 
     async def _ensure_conversation_exists(self, conversation_id: str) -> None:
         """Ensure conversation record exists."""
@@ -349,7 +354,9 @@ class ChatDatabase:
                 session.rollback()
                 raise e
 
-    async def update_conversation(self, conversation_id: str, title: str) -> Conversation:
+    async def update_conversation(
+        self, conversation_id: str, title: str
+    ) -> Conversation:
         """Update conversation title."""
         with self.Session() as session:
             try:
@@ -366,9 +373,11 @@ class ChatDatabase:
                 # Update title and updated_at
                 conversation.title = title
                 conversation.updated_at = datetime.now(timezone.utc)
-                
+
                 session.commit()
-                logger.info(f"backend_005: Updated conv title: \033[33m{conversation_id}\033[0m")
+                logger.info(
+                    f"backend_005: Updated conv title: \033[33m{conversation_id}\033[0m"
+                )
 
                 # Return updated conversation
                 return Conversation(

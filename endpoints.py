@@ -1,18 +1,18 @@
 import logging
 
 import yaml
+from archie_shared.chat.models import (
+    ChatMessage,
+    ConversationRequest,
+    ConversationResponse,
+    MessageResponse,
+)
+from archie_shared.chat.models import Conversation
 from fastapi import APIRouter, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from api_controller import get_api_controller
-from archie_shared.chat.models import (
-    ChatMessage,
-    ConversationModel as Conversation,
-    ConversationRequest,
-    ConversationResponse,
-    MessageResponse,
-)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -21,6 +21,7 @@ controller = get_api_controller()
 
 class UpdateConversationRequest(BaseModel):
     """Request model for updating conversation."""
+
     title: str
 
 

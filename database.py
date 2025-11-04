@@ -1,12 +1,14 @@
 import os
 from datetime import datetime, timezone
+
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 DATABASE_URL = os.getenv("DATABASE_URL")
+
 
 class Conversation(Base):
     __tablename__ = "ai_assistant_conversation"
@@ -34,9 +36,7 @@ class Message(Base):
         String, ForeignKey("ai_assistant_conversation.conversation_id"), nullable=False
     )
     role = Column(Text, nullable=False)
-    text_format = Column(Text, nullable=False, default="plain")
-    text = Column(Text, nullable=False)
-    metadata_json = Column(JSONB, nullable=True)
+    content = Column(JSONB, nullable=False)
     created_at = Column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
